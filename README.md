@@ -13,7 +13,7 @@ Our solution can count *any object* specified by users within an image.
 The SSA engine consists of three steps:
 - **(I) Segement Anything.** Following [Semantic-Segment-Anything](https://github.com/fudan-zvg/Semantic-Segment-Anything), CA engine crops a patch for each mask predicted by [Segment Anything](https://segment-anything.com/).
 - **(II) Class Mixer.** To identify the masks that match the user’s text prompt, we add the text prompt as an additional class into the class list from the close-set datasets (COCO or ADE20K). 
-- **(III) Final decision module (orange).** The CA engine uses a Class proposal filter (_i.e._ a CLIP) to assess if the text prompt is the best option among other classes. If yes, this mask is considered as an instance of the class given by the text prompt, and the count number is incremented by 1.
+- **(III) CLIP Encoders.** The CA engine uses CLIP image encoder and text encoder to assess if the text prompt is the best option among other classes. If yes, this mask is considered as an instance of the class given by the text prompt, and the count number is incremented by 1.
 
 ## Examples
 ![](./figures/example_1.png)
