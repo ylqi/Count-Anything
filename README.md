@@ -2,8 +2,8 @@
 
 ### [Official repo](https://github.com/ylqi/Count-Anything)
 > **[Count Anything](https://github.com/ylqi/Count-Anything)**  
-> Liqi Yan
-> ZJU-CV, Zhejiang University / Fudan Univerisity / Westlake University
+> Liqi, Yan                            
+> ZJU-CV, Zhejiang University / Fudan Univerisity
 
 _**C**ount **A**nything (CA)_ project is a versatile image processing tool that combines the capabilities of [Segment Anything](https://segment-anything.com/), [Semantic-Segment-Anything](https://github.com/fudan-zvg/Semantic-Segment-Anything), and [CLIP](https://arxiv.org/abs/2103.00020).
 Our solution can count *any object* specified by users within an image.
