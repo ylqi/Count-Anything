@@ -29,18 +29,31 @@ def main(rank, args):
     clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-large-patch14")
     clip_model = CLIPModel.from_pretrained("openai/clip-vit-large-patch14")
 
-    oneformer_ade20k_processor = OneFormerProcessor.from_pretrained("shi-labs/oneformer_ade20k_swin_tiny")
-    oneformer_ade20k_model = OneFormerForUniversalSegmentation.from_pretrained("shi-labs/oneformer_ade20k_swin_tiny")
+    if args.text_prompt is None:
+        oneformer_ade20k_processor = OneFormerProcessor.from_pretrained("shi-labs/oneformer_ade20k_swin_tiny")
+        oneformer_ade20k_model = OneFormerForUniversalSegmentation.from_pretrained("shi-labs/oneformer_ade20k_swin_tiny")
 
-    oneformer_coco_processor = OneFormerProcessor.from_pretrained("shi-labs/oneformer_coco_swin_large")
-    oneformer_coco_model = OneFormerForUniversalSegmentation.from_pretrained("shi-labs/oneformer_coco_swin_large")
+        oneformer_coco_processor = OneFormerProcessor.from_pretrained("shi-labs/oneformer_coco_swin_large")
+        oneformer_coco_model = OneFormerForUniversalSegmentation.from_pretrained("shi-labs/oneformer_coco_swin_large")
 
-    blip_processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-large")
-    blip_model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-large")
+        blip_processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-large")
+        blip_model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-large")
 
-    clipseg_processor = AutoProcessor.from_pretrained("CIDAS/clipseg-rd64-refined")
-    clipseg_model = CLIPSegForImageSegmentation.from_pretrained("CIDAS/clipseg-rd64-refined")
-    clipseg_processor.image_processor.do_resize = False
+        clipseg_processor = AutoProcessor.from_pretrained("CIDAS/clipseg-rd64-refined")
+        clipseg_model = CLIPSegForImageSegmentation.from_pretrained("CIDAS/clipseg-rd64-refined")
+        clipseg_processor.image_processor.do_resize = False
+    else:
+        oneformer_ade20k_processor = None
+        oneformer_ade20k_model = None
+
+        oneformer_coco_processor = None
+        oneformer_coco_model = None
+
+        blip_processor = None
+        blip_model = None
+
+        clipseg_processor = None
+        clipseg_model = None
     
     filenames = [fn_[:-5] for fn_ in os.listdir(args.data_dir) if '.json' in fn_]
     print("Load filenames: ", filenames)

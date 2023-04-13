@@ -65,7 +65,7 @@ def semantic_annotation_pipeline(filename, data_path, output_path, rank, save_im
     else:
         print("Pipline: Predicting coco classes...")
         # oneformer_coco_model.to(rank)
-        # class_ids_from_oneformer_coco = oneformer_coco_segmentation(Image.fromarray(img),oneformer_coco_processor,oneformer_coco_model, rank)
+        class_ids_from_oneformer_coco = oneformer_coco_segmentation(Image.fromarray(img),oneformer_coco_processor,oneformer_coco_model, rank)
         oneformer_ade20k_model.to(rank)
         class_ids_from_oneformer_ade20k = oneformer_ade20k_segmentation(Image.fromarray(img),oneformer_ade20k_processor,oneformer_ade20k_model, rank)
 
@@ -74,13 +74,13 @@ def semantic_annotation_pipeline(filename, data_path, output_path, rank, save_im
         for ann in anns:
             valid_mask = torch.tensor(maskUtils.decode(ann['segmentation'])).bool()
             # get the class ids of the valid pixels
-            # coco_propose_classes_ids = class_ids_from_oneformer_coco[valid_mask]
+            coco_propose_classes_ids = class_ids_from_oneformer_coco[valid_mask]
             ade20k_propose_classes_ids = class_ids_from_oneformer_ade20k[valid_mask]
-            # top_k_coco_propose_classes_ids = torch.bincount(coco_propose_classes_ids.flatten()).topk(1).indices
+            top_k_coco_propose_classes_ids = torch.bincount(coco_propose_classes_ids.flatten()).topk(1).indices
             top_k_ade20k_propose_classes_ids = torch.bincount(ade20k_propose_classes_ids.flatten()).topk(1).indices
             local_class_names = set()
             local_class_names = set.union(local_class_names, set([CONFIG_ADE20K_ID2LABEL['id2label'][str(class_id.item())] for class_id in top_k_ade20k_propose_classes_ids]))
-            # local_class_names = set.union(local_class_names, set(([CONFIG_COCO_ID2LABEL['refined_id2label'][str(class_id.item())] for class_id in top_k_coco_propose_classes_ids])))
+            local_class_names = set.union(local_class_names, set(([CONFIG_COCO_ID2LABEL['refined_id2label'][str(class_id.item())] for class_id in top_k_coco_propose_classes_ids])))
             
             op_class_list = open_vocabulary_classification_blip(patch_large,blip_processor, blip_model, rank)
             local_class_list = list(set.union(local_class_names, set(op_class_list))) # , set(refined_imagenet_class_names)
@@ -88,12 +88,11 @@ def semantic_annotation_pipeline(filename, data_path, output_path, rank, save_im
     
     clip_model.to(rank)
     all_mask_categories = []
-    print("Pipline: Predicting clip scores...")
+    print("Pipline: Predicting constrastive loss with clip...")
     for patch_small, local_class_list in zip(all_patch_small, all_local_class_list):
         mask_categories = clip_classification(patch_small, local_class_list, 3 if len(local_class_list)> 3 else len(local_class_list), clip_processor, clip_model, rank)
         all_mask_categories.append(mask_categories)
     
-    clipseg_model.to(rank)
 
     if text_prompt is not None:
         print("Pipline: Counting...")
@@ -106,6 +105,7 @@ def semantic_annotation_pipeline(filename, data_path, output_path, rank, save_im
                 bitmasks.append(maskUtils.decode(ann['segmentation']))
                 count += 1
     else:
+        clipseg_model.to(rank)
         print("Pipline: Predicting clipseg top-1...")
         for ann, patch_huge, mask_categories, valid_mask_huge_crop in zip(anns, all_patch_huge, all_mask_categories, all_valid_mask_huge_crop):
             class_ids_patch_huge = clipseg_segmentation(patch_huge, mask_categories, clipseg_processor, clipseg_model, rank).argmax(0)
@@ -127,7 +127,7 @@ def semantic_annotation_pipeline(filename, data_path, output_path, rank, save_im
                     font_size=25,
                     show=False,
                     out_file=os.path.join(output_path, filename+'_class_name.png'))
-        print(os.path.join(output_path, filename+'_class_name.png'))
+        print("Saved to: ", os.path.join(output_path, filename+'_class_name.png'))
     
     if text_prompt is not None:
         print("Detect %s count: %d" % (text_prompt, count))

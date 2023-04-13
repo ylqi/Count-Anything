@@ -29,6 +29,7 @@ conda activate ca-env
 ```
 ## 🚀 Quick Start
 ### 1. Run [Segment Anything](https://segment-anything.com/) to get segmentation jsons for each image:
+Please use `--convert-to-rle` to save segmentation results as `.json` files.
 ```bash
 python scripts/amg.py --checkpoint sam_vit_h_4b8939.pth --input examples/AdobeStock_323574125.jpg --output output --model-type vit_h  --pred-iou-thresh 0.98 --crop-n-layers 0 --crop-nms-thresh 0.3 --box-nms-thresh 0.5 --stability-score-thresh 0.7 --convert-to-rle
 ```
@@ -43,6 +44,7 @@ python scripts/amg.py --checkpoint sam_vit_h_4b8939.pth --input examples/AdobeSt
 ```
 
 ### 3. Run our Count Anything engine with 1 GPU:
+Please use `--text_prompt [OBJ]` to specify the customized class for counting.
 ```bash
 python scripts/main.py --data_dir=data/examples --out_dir=output --world_size=1 --save_img --text_prompt shirt
 ```
