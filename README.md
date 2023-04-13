@@ -59,7 +59,7 @@ The result is saved in `output` folder.
 ## 📜 Citation
 If you find this work useful for your research, please cite our github repo:
 ```bibtex
-@misc{chen2023semantic,
+@misc{yan2023count,
     title = {Count Anything},
     author = {Yan, Liqi},
     howpublished = {\url{https://github.com/ylqi/Count-Anything}},
