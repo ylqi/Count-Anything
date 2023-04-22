@@ -20,6 +20,7 @@ def parse_args():
     parser.add_argument('--save_img', default=False, action='store_true', help='whether to save annotated images')
     parser.add_argument('--world_size', type=int, default=0, help='number of nodes')
     parser.add_argument('--text_prompt', type=str, default=None, help='input object name to count')
+    parser.add_argument('--area_min_thres', type=str, default=0.0015, help='input object size threshold to count')
     args = parser.parse_args()
     return args
     
@@ -59,11 +60,11 @@ def main(rank, args):
     print("Load filenames: ", filenames)
     local_filenames = filenames[(len(filenames) // args.world_size + 1) * rank : (len(filenames) // args.world_size + 1) * (rank + 1)]
     for file_name in local_filenames:
-        semantic_annotation_pipeline(file_name, args.data_dir, args.out_dir, rank, save_img=args.save_img,
+        semantic_annotation_pipeline(file_name, args.data_dir, args.out_dir, rank, save_img=args.save_img, area_min_thres=args.area_min_thres,
                                     clip_processor=clip_processor, clip_model=clip_model,
                                     oneformer_ade20k_processor=oneformer_ade20k_processor, oneformer_ade20k_model=oneformer_ade20k_model,
                                     oneformer_coco_processor=oneformer_coco_processor, oneformer_coco_model=oneformer_coco_model,
-                                    blip_processor=blip_processor, blip_model=blip_model,
+                                    blip_processor=blip_processor, blip_model=blip_model, 
                                     clipseg_processor=clipseg_processor, clipseg_model=clipseg_model, text_prompt=args.text_prompt)
 
 if __name__ == '__main__':

@@ -15,7 +15,11 @@ from blip import open_vocabulary_classification_blip
 import torch.nn.functional as F
 import json
 
-def semantic_annotation_pipeline(filename, data_path, output_path, rank, save_img=False, scale_small=1.2, scale_large=1.6, scale_huge=3.0,
+from tqdm import tqdm
+
+from utils import dice_coef
+
+def semantic_annotation_pipeline(filename, data_path, output_path, rank, save_img=False, scale_small=1.2, scale_large=1.6, scale_huge=3.0, area_min_thres=0.0015,
                                  clip_processor=None,
                                  clip_model=None,
                                  oneformer_ade20k_processor=None,
@@ -32,13 +36,16 @@ def semantic_annotation_pipeline(filename, data_path, output_path, rank, save_im
     img = mmcv.imread(os.path.join(data_path, filename+'.jpg'))
     bitmasks, class_names = [], []
 
+    all_valid_mask = []
     all_patch_small = []
     all_patch_huge = []
     all_local_class_list = []
     all_valid_mask_huge_crop = []
     print("Pipline: Predicting with open-vocabuary classes...")
     for ann in anns:
-        valid_mask = torch.tensor(maskUtils.decode(ann['segmentation'])).bool()
+        valid_mask = maskUtils.decode(ann['segmentation'])
+        if np.sum(valid_mask.flatten()) < area_min_thres * valid_mask.shape[0] * valid_mask.shape[1]:
+            continue
         patch_small = mmcv.imcrop(img, np.array(
             [ann['bbox'][0], ann['bbox'][1], ann['bbox'][0] + ann['bbox'][2], ann['bbox'][1] + ann['bbox'][3]]),
                                 scale=scale_small)
@@ -48,9 +55,10 @@ def semantic_annotation_pipeline(filename, data_path, output_path, rank, save_im
         patch_huge = mmcv.imcrop(img, np.array(
             [ann['bbox'][0], ann['bbox'][1], ann['bbox'][0] + ann['bbox'][2], ann['bbox'][1] + ann['bbox'][3]]),
                                 scale=scale_large)
-        valid_mask_huge_crop = mmcv.imcrop(valid_mask.numpy(), np.array(
+        valid_mask_huge_crop = mmcv.imcrop(valid_mask, np.array(
             [ann['bbox'][0], ann['bbox'][1], ann['bbox'][0] + ann['bbox'][2], ann['bbox'][1] + ann['bbox'][3]]),
                                     scale=scale_large)
+        all_valid_mask.append(valid_mask)
         all_patch_small.append(patch_small)
         all_patch_huge.append(patch_huge)
         all_valid_mask_huge_crop.append(valid_mask_huge_crop)
@@ -58,9 +66,17 @@ def semantic_annotation_pipeline(filename, data_path, output_path, rank, save_im
     if text_prompt is not None:
         ade20k_classes = json.load(open("datasets/shi-labs/oneformer_demo/ade20k_panoptic.json", 'r'))
         local_class_names = set([ade20k_classes[key]["name"] for key in ade20k_classes.keys()])
+        # imagenet_classes = json.load(open("datasets/imagenet-1k/dataset_infos.json", 'r'))["default"]["features"]["label"]["names"]
+        # local_class_names = set([class_text.split(', ')[0] for class_text in imagenet_classes])
+
+        if text_prompt in local_class_names:
+            top_k = int(0.1 * len(local_class_names))
+        else:
+            top_k = 1
+        
         local_class_names = set.union(local_class_names, set([text_prompt]))
         # print("local_class_list: ", local_class_names)
-        for ann in anns:
+        for valid_mask in all_valid_mask:
             all_local_class_list.append(list(local_class_names))
     else:
         print("Pipline: Predicting coco classes...")
@@ -69,10 +85,11 @@ def semantic_annotation_pipeline(filename, data_path, output_path, rank, save_im
         oneformer_ade20k_model.to(rank)
         class_ids_from_oneformer_ade20k = oneformer_ade20k_segmentation(Image.fromarray(img),oneformer_ade20k_processor,oneformer_ade20k_model, rank)
 
+        top_k = 3
+
         blip_model.to(rank)
         print("Pipline: Predicting open-vocabuary classes...")
-        for ann in anns:
-            valid_mask = torch.tensor(maskUtils.decode(ann['segmentation'])).bool()
+        for valid_mask in all_valid_mask:
             # get the class ids of the valid pixels
             coco_propose_classes_ids = class_ids_from_oneformer_coco[valid_mask]
             ade20k_propose_classes_ids = class_ids_from_oneformer_ade20k[valid_mask]
@@ -88,46 +105,64 @@ def semantic_annotation_pipeline(filename, data_path, output_path, rank, save_im
     
     clip_model.to(rank)
     all_mask_categories = []
+    all_probs = []
     print("Pipline: Predicting constrastive loss with clip...")
-    for patch_small, local_class_list in zip(all_patch_small, all_local_class_list):
-        mask_categories = clip_classification(patch_small, local_class_list, 3 if len(local_class_list)> 3 else len(local_class_list), clip_processor, clip_model, rank)
+    for patch_small, local_class_list in tqdm(zip(all_patch_small, all_local_class_list), total=len(all_local_class_list)):
+        mask_categories, probs = clip_classification(patch_small, local_class_list, top_k if len(local_class_list)> top_k else len(local_class_list), clip_processor, clip_model, rank)
         all_mask_categories.append(mask_categories)
+        all_probs.append([prob.cpu().detach().item() for prob in probs])
+        del probs
     
-
     if text_prompt is not None:
         print("Pipline: Counting...")
-        for ann, mask_categories in zip(anns, all_mask_categories):
+        for valid_mask, mask_categories, probs in zip(all_valid_mask, all_mask_categories, all_probs):
             # print("mask_categories: ", mask_categories)
-            if text_prompt == mask_categories[0]:
-                ann['class_name'] = "%s(id: %d)" % (text_prompt, count + 1)
-                ann['class_proposals'] = mask_categories
-                class_names.append(ann['class_name'])
-                bitmasks.append(maskUtils.decode(ann['segmentation']))
+            if text_prompt in mask_categories and probs[mask_categories.index(text_prompt)] > 0.01:
+                # ann['class_name'] = text_prompt
+                # ann['class_proposals'] = mask_categories
+                class_names.append(text_prompt)
+                bitmasks.append(valid_mask)
                 count += 1
     else:
         clipseg_model.to(rank)
         print("Pipline: Predicting clipseg top-1...")
-        for ann, patch_huge, mask_categories, valid_mask_huge_crop in zip(anns, all_patch_huge, all_mask_categories, all_valid_mask_huge_crop):
+        for valid_mask, patch_huge, mask_categories, valid_mask_huge_crop in zip(all_valid_mask, all_patch_huge, all_mask_categories, all_valid_mask_huge_crop):
             class_ids_patch_huge = clipseg_segmentation(patch_huge, mask_categories, clipseg_processor, clipseg_model, rank).argmax(0)
             top_1_patch_huge = torch.bincount(class_ids_patch_huge[torch.tensor(valid_mask_huge_crop)].flatten()).topk(1).indices
             top_1_mask_category = mask_categories[top_1_patch_huge.item()]
 
-            ann['class_name'] = str(top_1_mask_category)
-            ann['class_proposals'] = mask_categories
-            class_names.append(ann['class_name'])
-            bitmasks.append(maskUtils.decode(ann['segmentation']))
-        
-    mmcv.dump(anns, os.path.join(output_path, filename + '_semantic.json'))
+            # ann['class_name'] = str(top_1_mask_category)
+            # ann['class_proposals'] = mask_categories
+            class_names.append(top_1_mask_category)
+            bitmasks.append(valid_mask)
+    
+    print("Pipline: Remove duplicates...")
+    del_list = []
+    for idx in tqdm(range(len(bitmasks))):
+        bitmask = bitmasks[idx]
+        for i, ref_bitmask in enumerate(bitmasks):
+            if i == idx:
+                continue
+            dice, larger = dice_coef(bitmask, ref_bitmask)
+            if dice > 0.4 and larger:
+                del_list.append(idx)
+                break
+    del_list.reverse()
+    for idx in del_list:
+        bitmasks.pop(idx)
+        class_names.pop(idx)
+
+    # mmcv.dump(anns, os.path.join(output_path, filename + '_semantic.json'))
     if save_img:
         imshow_det_bboxes(img,
                     bboxes=None,
                     labels=np.arange(len(bitmasks)),
                     segms=np.stack(bitmasks),
-                    class_names=class_names,
+                    class_names=["%s (id: %d)" % (class_name, i + 1) for i, class_name in enumerate(class_names)],
                     font_size=25,
                     show=False,
                     out_file=os.path.join(output_path, filename+'_class_name.png'))
         print("Saved to: ", os.path.join(output_path, filename+'_class_name.png'))
     
     if text_prompt is not None:
-        print("Detect %s count: %d" % (text_prompt, count))
+        print("Detect %s count: %d" % (text_prompt, len(bitmasks)))

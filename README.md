@@ -17,6 +17,7 @@ The CA engine consists of three steps:
 
 ## 🚩Examples
 ![](./figures/example_1.png)
+![](./figures/example_2.png)
 
 ## 💻 Requirements
 - Python 3.7+
@@ -31,7 +32,10 @@ conda activate ca-env
 ### 1. Run [Segment Anything](https://segment-anything.com/) to get segmentation jsons for each image:
 Please use `--convert-to-rle` to save segmentation results as `.json` files.
 ```bash
-python scripts/amg.py --checkpoint sam_vit_h_4b8939.pth --input examples/AdobeStock_323574125.jpg --output output --model-type vit_h  --pred-iou-thresh 0.98 --crop-n-layers 0 --crop-nms-thresh 0.3 --box-nms-thresh 0.5 --stability-score-thresh 0.7 --convert-to-rle
+python scripts/amg.py --checkpoint sam_vit_h_4b8939.pth --model-type vit_h --convert-to-rle --input examples/AdobeStock_323574125.jpg --output output --pred-iou-thresh 0.98 --crop-n-layers 0 --crop-nms-thresh 0.3 --box-nms-thresh 0.5 --stability-score-thresh 0.7
+```
+```bash
+python scripts/amg.py --checkpoint sam_vit_h_4b8939.pth --model-type vit_h --convert-to-rle --input examples/crowd_img.jpg --output output --pred-iou-thresh 0 --min-mask-region-area 0  --stability-score-thresh 0.8
 ```
 ### 2. Save the `.jpg` and `.json` in our `data/examples` folder:
 ```none
@@ -46,7 +50,10 @@ python scripts/amg.py --checkpoint sam_vit_h_4b8939.pth --input examples/AdobeSt
 ### 3. Run our Count Anything engine with 1 GPU:
 Please use `--text_prompt [OBJ]` to specify the customized class for counting.
 ```bash
-python scripts/main.py --data_dir=data/examples --out_dir=output --world_size=1 --save_img --text_prompt shirt
+python scripts/main.py --out_dir=output --world_size=1 --save_img --text_prompt="shirt" --data_dir=data/examples 
+```
+```bash
+python scripts/main.py --out_dir=output --world_size=1 --save_img --text_prompt="person" --data_dir=data/crowd_examples/ 
 ```
 The result is saved in `output` folder.
 
